@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  mdr-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - mdr-api
+
+  mdr-api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHON_ENV=development
+    volumes:
+      - ./services/api:/app
+      - ./models:/app/models
+    command: python main.py
+
+volumes:
+  node_modules:
