@@ -1,14 +1,21 @@
 import pickle
 import pandas as pd
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 import uvicorn
 import os
+from datetime import datetime
+import logging
 
-app = FastAPI(title="MDR Stratify API", version="1.0.0")
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="MDR Stratify API with USSD - Multi-Pathogen", version="2.0.0")
 
 # Add CORS middleware
 app.add_middleware(
@@ -19,92 +26,214 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Define encoding mappings
-PATHOGEN_MAPPING = {
-    "Staphylococcus aureus": 0
-}
-
-PHENOTYPE_MAPPING = {
-    "MSSA": 1,
-    "MRSA": 0
-}
-
+# Common mappings across all models
 COUNTRY_MAPPING = {
-    "Europe": 0,
-    "Asia": 1,
-    "North America": 2,
-    "South America": 3,
-    "Middle East": 4,
-    "Oceania": 5,
-    "Africa": 6
-}
-
-SEX_MAPPING = {
-    "Female": 1,
-    "Male": 0
-}
-
-AGE_GROUP_MAPPING = {
-    "65-84 Years": 1,
-    "85+ Years": 2,
-    "13-18 Years": 5,
-    "19-64 Years": 0,
-    "3-12 Years": 3,
-    "0-2 Years": 4,
-    "Unknown": 6
+    "Argentina": 0, "Australia": 1, "Austria": 2, "Belgium": 3, "Brazil": 4, 
+    "Bulgaria": 5, "Cameroon": 6, "Canada": 7, "Chile": 8, "China": 9, 
+    "Colombia": 10, "Costa Rica": 11, "Croatia": 12, "Czech Republic": 13, 
+    "Denmark": 14, "Dominican Republic": 15, "Egypt": 16, "El Salvador": 17, 
+    "Estonia": 18, "Finland": 19, "France": 20, "Germany": 21, "Ghana": 22, 
+    "Greece": 23, "Guatemala": 24, "Honduras": 25, "Hong Kong": 26, "Hungary": 27, 
+    "India": 28, "Indonesia": 29, "Ireland": 30, "Israel": 31, "Italy": 32, 
+    "Ivory Coast": 33, "Jamaica": 34, "Japan": 35, "Jordan": 36, "Kenya": 37, 
+    "Korea, South": 38, "Kuwait": 39, "Latvia": 40, "Lebanon": 41, "Lithuania": 42, 
+    "Malawi": 43, "Malaysia": 44, "Mauritius": 45, "Mexico": 46, "Morocco": 47, 
+    "Namibia": 48, "Netherlands": 49, "New Zealand": 50, "Nicaragua": 51, 
+    "Nigeria": 52, "Norway": 53, "Oman": 54, "Pakistan": 55, "Panama": 56, 
+    "Philippines": 57, "Poland": 58, "Portugal": 59, "Puerto Rico": 60, "Qatar": 61, 
+    "Romania": 62, "Russia": 63, "Saudi Arabia": 64, "Serbia": 65, "Singapore": 66, 
+    "Slovak Republic": 67, "Slovenia": 68, "South Africa": 69, "Spain": 70, 
+    "Sweden": 71, "Switzerland": 72, "Taiwan": 73, "Thailand": 74, "Tunisia": 75, 
+    "Turkey": 76, "Uganda": 77, "Ukraine": 78, "United Kingdom": 79, 
+    "United States": 80, "Venezuela": 81, "Vietnam": 82
 }
 
 WARD_MAPPING = {
-    "Medicine General": 0,
-    "Surgery General": 1,
+    "Medical ward": 0,
+    "Surgical ward": 1, 
     "ICU": 2,
-    "Emergency Room": 3,
-    "Pediatric General": 4,
-    "Clinic / Office": 5,
-    "Pediatric ICU": 6,
-    "Nursing Home / Rehab": 7,
-    "Unknown": 8
+    "Emergency": 3,
+    "Pediatric ward": 4,
+    "Clinic": 6,
+    "NICU": 7,
+    "Nursing home": 8
 }
 
 SPECIMEN_TYPE_MAPPING = {
-    "Wound": 0, "Blood": 1, "Sputum": 2, "Abscess": 3, "Endotracheal aspirate": 4,
-    "Gastric Abscess": 5, "Skin: Other": 6, "Ulcer": 7, "Urine": 8, "Bronchus": 9,
-    "Bronchoalveolar lavage": 10, "Skin": 11, "Trachea": 12, "Cellulitis": 13,
-    "Peritoneal Fluid": 14, "Respiratory: Other": 15, "Decubitus": 16, "Burn": 17,
-    "Nose": 18, "Furuncle": 19, "Catheters": 20, "Exudate": 21, "Impetiginous lesions": 22,
-    "Tissue Fluid": 23, "Thoracentesis Fluid": 24, "Abdominal Fluid": 25, "Ear": 26,
-    "Intestinal: Other": 27, "Eye": 28, "Bone": 29, "Synovial Fluid": 30, "Lungs": 31,
-    "Throat": 32, "None Given": 33, "Bodily Fluids": 34, "Carbuncle": 35, "Aspirate": 36,
-    "HEENT: Other": 37, "Pleural Fluid": 38, "Respiratory: Sinuses": 39, "Muscle": 40,
-    "Bladder": 41, "Genitourinary: Other": 42, "Gall Bladder": 43, "Vagina": 44,
-    "Stomach": 45, "Drains": 46, "Urethra": 47, "CSF": 48, "Instruments: Other": 49,
-    "Circulatory: Other": 50, "Kidney": 51, "Colon": 52, "Skeletal: Other": 53,
-    "Integumentary (Skin Nail Hair)": 54, "Appendix": 55, "Liver": 56, "Pancreas": 57,
-    "Mouth": 58, "Spinal Cord": 59, "Penis": 60, "Head": 61, "CNS: Other": 62,
-    "Prostate": 63, "Rectum": 64, "Bile": 65, "Ureter": 66, "Heart": 67,
-    "Lymph Nodes": 68, "Feces/Stool": 69, "Uterus": 70, "Peripheral Nerves": 71,
-    "Blood Vessels": 72, "Diverticulum": 73, "Nails": 74, "Bone Marrow": 75,
-    "Placenta": 76, "Testis": 77, "Brain": 78, "Fallopian Tubes": 79, "Hair": 80,
-    "Cervix": 81, "Ovary": 82, "Nasopharyngeal Aspirate": 83, "Nasotracheal Aspirate": 84,
-    "Lymphatic Fluid": 85, "Vas Deferens": 86, "Transtracheal Aspirate": 87,
-    "Esophagus": 88, "Bronchiole": 89
+    "Skin & Soft Tissue": 1,
+    "Respiratory": 2,
+    "Blood & Circulatory": 3,
+    "Gastrointestinal": 4,
+    "Urinary & Genital": 5,
+    "Ascitic Fluid": 6,
+    "ENT & CNS": 7,
+    "Musculoskeletal & Bone": 8,
+    "Other": 9
+}
+
+AGE_GROUP_MAPPING = {
+    "85 and Over": 1,
+    "65 to 84 Years": 2,
+    "19 to 64 Years": 3,
+    "13 to 18 Years": 4,
+    "3 to 12 Years": 5,
+    "0 to 2 Years": 6
 }
 
 IN_OUT_PATIENT_MAPPING = {
     "Inpatient": 0,
-    "None Given": 1,
-    "Outpatient": 2,
-    "Other": 3
+    "Outpatient": 1
 }
 
-# Antibiotic names for result interpretation
-ANTIBIOTIC_NAMES = [
-    "Clindamycin", "Erythromycin", "Levofloxacin", "Linezolid", "Minocycline",
-    "Tigecycline", "Vancomycin", "Ceftaroline", "Daptomycin", "Gentamicin",
-    "Moxifloxacin", "Oxacillin", "Teicoplanin", "Trimethoprim sulfa"
-]
+SEX_MAPPING = {
+    "Male": 0,
+    "Female": 1
+}
 
+# Pathogen-specific mappings
+PATHOGEN_MODELS = {
+    "Staphylococcus aureus": {
+        "model_path": "models/staphylococcus_aureus_model.pkl",
+        "phenotype_mapping": {
+            "MSSA": 1,
+            "MRSA": 0
+        },
+        "antibiotics": [
+            "Clindamycin", "Erythromycin", "Levofloxacin", "Linezolid", "Minocycline",
+            "Tigecycline", "Vancomycin", "Ceftaroline", "Daptomycin", "Gentamicin",
+            "Moxifloxacin", "Oxacillin", "Teicoplanin", "Trimethoprim sulfa"
+        ]
+    },
+    "Escherichia coli": {
+        "model_path": "models/escherichia_coli_model.pkl",
+        "phenotype_mapping": {
+            "SPM-Neg": 0, "GIM-Neg": 1, "ESBL": 2, "NDM-Neg": 3, "CTX-M-15": 4,
+            "CTX-M-14": 5, "CTX-M-27": 6, "CMY-2": 7, "TEM-OSBL": 8, "CTX-M-32": 9, "TEM-52": 10
+        },
+        "antibiotics": [
+            "Amikacin", "Amoxycillin clavulanate", "Ampicillin", "Cefepime", "Ceftazidime",
+            "Levofloxacin", "Meropenem", "Piperacillin tazobactam", "Tigecycline"
+        ]
+    },
+    "Klebsiella pneumoniae": {
+        "model_path": "models/klebsiella_pneumoniae_model.pkl",
+        "phenotype_mapping": {
+            "GIM-Neg": 0, "ESBL": 1, "SPM-Neg": 2, "NDM-Neg": 3, "KPC": 4, "Unknown": 5
+        },
+        "antibiotics": [
+            "Amikacin", "Amoxycillin clavulanate", "Ampicillin", "Cefepime",
+            "Levofloxacin", "Meropenem", "Piperacillin tazobactam", "Tigecycline"
+        ]
+    },
+    "Acinetobacter baumannii": {
+        "model_path": "models/acinetobacter_baumannii_model.pkl",
+        "phenotype_mapping": {
+            "OXA-23": 0, "OXA-24": 1, "OXA-58": 2, "SPM-Neg": 3, "GIM-Neg": 4,
+            "OXA-239": 5, "OXA-72": 6, "OXA-40": 7, "OXA-366": 8, "OXA-435": 9,
+            "OXA-398": 10, "OXA-TYPE": 11, "OXA-437": 12, "OXA-420": 13,
+            "OXA-440": 14, "OXA-397": 15, "Unknown": 16
+        },
+        "antibiotics": [
+            "Amikacin", "Cefepime", "Ceftazidime", "Levofloxacin", "Meropenem", "Piperacillin tazobactam"
+        ]
+    },
+    "Pseudomonas aeruginosa": {
+        "model_path": "models/pseudomonas_aeruginosa_model.pkl",
+        "phenotype_mapping": {
+            "GIM-Neg": 0, "SPM-Neg": 1, "Unknown": 2
+        },
+        "antibiotics": [
+            "Amikacin", "Cefepime", "Ceftazidime", "Levofloxacin", "Meropenem", "Piperacillin tazobactam"
+        ]
+    }
+}
 
+# USSD Session Management
+class USSDSession:
+    """Manages USSD session state"""
+    def __init__(self):
+        self.sessions = {}
+    
+    def get_session(self, session_id: str) -> Dict[str, Any]:
+        return self.sessions.get(session_id, {
+            'step': 'start',
+            'data': {},
+            'menu_stack': []
+        })
+    
+    def update_session(self, session_id: str, data: Dict[str, Any]):
+        self.sessions[session_id] = data
+        logger.info(f"Session {session_id} updated: step={data.get('step')}")
+    
+    def clear_session(self, session_id: str):
+        if session_id in self.sessions:
+            del self.sessions[session_id]
+            logger.info(f"Session {session_id} cleared")
+
+# Updated USSD Menu Definitions
+MAIN_MENU = {
+    'text': 'MDR Stratify - Antibiotic Resistance Prediction\n1. New Prediction\n2. Help\n3. About',
+    'options': {'1': 'new_prediction', '2': 'help', '3': 'about'}
+}
+
+PATHOGEN_MENU = {
+    'text': 'Select Pathogen:\n1. Staphylococcus aureus\n2. Escherichia coli\n3. Klebsiella pneumoniae\n4. Acinetobacter baumannii\n5. Pseudomonas aeruginosa',
+    'options': {
+        '1': 'Staphylococcus aureus',
+        '2': 'Escherichia coli', 
+        '3': 'Klebsiella pneumoniae',
+        '4': 'Acinetobacter baumannii',
+        '5': 'Pseudomonas aeruginosa'
+    }
+}
+
+# Dynamic phenotype menus will be generated based on selected pathogen
+
+COUNTRY_MENU = {
+    'text': 'Select Country (1-20):\n1. Argentina\n2. Australia\n3. Austria\n4. Belgium\n5. Brazil\n6. Bulgaria\n7. Cameroon\n8. Canada\n9. Chile\n10. China\n11. Colombia\n12. Costa Rica\n13. Croatia\n14. Czech Republic\n15. Denmark\n16. Dominican Republic\n17. Egypt\n18. El Salvador\n19. Estonia\n20. More...',
+    'options': {str(i+1): list(COUNTRY_MAPPING.keys())[i] for i in range(min(20, len(COUNTRY_MAPPING)))}
+}
+
+WARD_MENU = {
+    'text': 'Ward/Department:\n1. Medical ward\n2. Surgical ward\n3. ICU\n4. Emergency\n5. Pediatric ward\n6. Clinic\n7. NICU\n8. Nursing home',
+    'options': {
+        '1': 'Medical ward', '2': 'Surgical ward', '3': 'ICU',
+        '4': 'Emergency', '5': 'Pediatric ward', '6': 'Clinic',
+        '7': 'NICU', '8': 'Nursing home'
+    }
+}
+
+SPECIMEN_MENU = {
+    'text': 'Specimen Type:\n1. Skin & Soft Tissue\n2. Respiratory\n3. Blood & Circulatory\n4. Gastrointestinal\n5. Urinary & Genital\n6. Ascitic Fluid\n7. ENT & CNS\n8. Musculoskeletal & Bone\n9. Other',
+    'options': {
+        '1': 'Skin & Soft Tissue', '2': 'Respiratory', '3': 'Blood & Circulatory',
+        '4': 'Gastrointestinal', '5': 'Urinary & Genital', '6': 'Ascitic Fluid',
+        '7': 'ENT & CNS', '8': 'Musculoskeletal & Bone', '9': 'Other'
+    }
+}
+
+AGE_GROUP_MENU = {
+    'text': 'Patient Age Group:\n1. 0-2 Years\n2. 3-12 Years\n3. 13-18 Years\n4. 19-64 Years\n5. 65-84 Years\n6. 85+ Years',
+    'options': {
+        '1': '0 to 2 Years', '2': '3 to 12 Years', '3': '13 to 18 Years',
+        '4': '19 to 64 Years', '5': '65 to 84 Years', '6': '85 and Over'
+    }
+}
+
+SEX_MENU = {
+    'text': 'Patient Gender:\n1. Male\n2. Female',
+    'options': {'1': 'Male', '2': 'Female'}
+}
+
+PATIENT_TYPE_MENU = {
+    'text': 'Patient Type:\n1. Inpatient\n2. Outpatient',
+    'options': {'1': 'Inpatient', '2': 'Outpatient'}
+}
+
+# Initialize session manager
+session_manager = USSDSession()
+
+# Updated models
 class MDRPredictionInput(BaseModel):
     pathogen: str
     phenotype: str
@@ -116,14 +245,14 @@ class MDRPredictionInput(BaseModel):
     in_out_patient: str
     year: int
 
-
 class AntibioticResult(BaseModel):
     name: str
     resistance: bool
     confidence: float
 
-
 class MDRPredictionOutput(BaseModel):
+    pathogen: str
+    phenotype: str
     overall_mdr_risk: bool
     mdr_confidence: float
     risk_level: str
@@ -132,98 +261,75 @@ class MDRPredictionOutput(BaseModel):
     total_resistant_count: int
     resistance_percentage: float
 
+# Load models
+def load_models():
+    """Load all pathogen-specific models"""
+    models = {}
+    for pathogen, config in PATHOGEN_MODELS.items():
+        try:
+            model_path = config["model_path"]
+            if os.path.exists(model_path):
+                with open(model_path, 'rb') as f:
+                    models[pathogen] = pickle.load(f)
+                    logger.info(f"Loaded model for {pathogen}")
+            else:
+                logger.warning(f"Model file not found for {pathogen}: {model_path}")
+                models[pathogen] = None
+        except Exception as e:
+            logger.error(f"Error loading model for {pathogen}: {e}")
+            models[pathogen] = None
+    return models
 
-# Load the pickle model
-MODEL_PATH = "models/mdr_model.pkl"
-
-
-def load_model():
-    """Load the trained MDR prediction model"""
-    try:
-        if os.path.exists(MODEL_PATH):
-            with open(MODEL_PATH, 'rb') as f:
-                return pickle.load(f)
-        else:
-            return None
-    except Exception as e:
-        # print(f"Error loading model: {e}")
-        return None
-
-
-model = load_model()
-
-
-@app.get("/")
-async def root():
-    return {"message": "MDR Stratify API is running"}
-
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "model_loaded": model is not None}
-
-
-@app.get("/mappings")
-async def get_mappings():
-    """Get all the mapping dictionaries for the frontend"""
-    return {
-        "pathogens": list(PATHOGEN_MAPPING.keys()),
-        "phenotypes": list(PHENOTYPE_MAPPING.keys()),
-        "countries": list(COUNTRY_MAPPING.keys()),
-        "sexes": list(SEX_MAPPING.keys()),
-        "age_groups": list(AGE_GROUP_MAPPING.keys()),
-        "wards": list(WARD_MAPPING.keys()),
-        "specimen_types": list(SPECIMEN_TYPE_MAPPING.keys()),
-        "in_out_patient": list(IN_OUT_PATIENT_MAPPING.keys()),
-        "antibiotics": ANTIBIOTIC_NAMES
-    }
-
+models = load_models()
 
 def encode_input(input_data: MDRPredictionInput) -> np.ndarray:
     """Convert text input to numeric encoding expected by the model"""
     try:
+        pathogen_config = PATHOGEN_MODELS[input_data.pathogen]
+        phenotype_mapping = pathogen_config["phenotype_mapping"]
+        
         encoded_features = [
-            PATHOGEN_MAPPING.get(input_data.pathogen, 0),
-            PHENOTYPE_MAPPING.get(input_data.phenotype, 0),
+            phenotype_mapping.get(input_data.phenotype, 0),
             COUNTRY_MAPPING.get(input_data.country, 0),
             SEX_MAPPING.get(input_data.sex, 0),
             AGE_GROUP_MAPPING.get(input_data.age_group, 0),
             WARD_MAPPING.get(input_data.ward, 0),
             SPECIMEN_TYPE_MAPPING.get(input_data.specimen_type, 0),
             IN_OUT_PATIENT_MAPPING.get(input_data.in_out_patient, 0),
-            input_data.year
+            input_data.year,
         ]
+        print(encoded_features)
+
 
         return np.array(encoded_features).reshape(1, -1)
     except Exception as e:
         raise HTTPException(
             status_code=400, detail=f"Error encoding input: {str(e)}")
 
-
-def interpret_predictions(predictions: np.ndarray) -> MDRPredictionOutput:
+def interpret_predictions(predictions: np.ndarray, pathogen: str, phenotype: str) -> MDRPredictionOutput:
     """Interpret the model's antibiotic resistance predictions"""
-    print(predictions)
-    num_antibiotics = len(ANTIBIOTIC_NAMES)
+    pathogen_config = PATHOGEN_MODELS[pathogen]
+    antibiotic_names = pathogen_config["antibiotics"]
+    num_antibiotics = len(antibiotic_names)
 
     if len(predictions) != num_antibiotics:
-        raise ValueError(f"Expected {num_antibiotics} predictions, but got {len(predictions)}")
-
-
+        raise ValueError(f"Expected {num_antibiotics} predictions for {pathogen}, but got {len(predictions)}")
 
     resistant_antibiotics = []
     susceptible_antibiotics = []
 
-    for i in range(len(predictions)):
-        pred = predictions[i]
-        prob = 0.5
+    for i, pred in enumerate(predictions):
+        # Assuming predictions are probabilities, convert to binary
+        is_resistant = pred > 0.5
+        confidence = float(abs(pred - 0.5) + 0.5)  # Convert to confidence score
 
         antibiotic_result = AntibioticResult(
-            name=ANTIBIOTIC_NAMES[i],
-            resistance=bool(pred),
-            confidence=float(prob)
+            name=antibiotic_names[i],
+            resistance=bool(is_resistant),
+            confidence=confidence
         )
 
-        if pred:
+        if is_resistant:
             resistant_antibiotics.append(antibiotic_result)
         else:
             susceptible_antibiotics.append(antibiotic_result)
@@ -231,8 +337,8 @@ def interpret_predictions(predictions: np.ndarray) -> MDRPredictionOutput:
     total_resistant = len(resistant_antibiotics)
     resistance_percentage = (total_resistant / num_antibiotics) * 100
 
-    # Determine MDR status
-    overall_mdr_risk = total_resistant >= 3  # if one is resistant to more than 1 drug
+    # Determine MDR status (3 or more resistant antibiotics)
+    overall_mdr_risk = total_resistant >= 3
     mdr_confidence = min(0.95, max(0.5, resistance_percentage / 100))
 
     if resistance_percentage >= 50:
@@ -243,6 +349,8 @@ def interpret_predictions(predictions: np.ndarray) -> MDRPredictionOutput:
         risk_level = "Low"
 
     return MDRPredictionOutput(
+        pathogen=pathogen,
+        phenotype=phenotype,
         overall_mdr_risk=overall_mdr_risk,
         mdr_confidence=mdr_confidence,
         risk_level=risk_level,
@@ -252,55 +360,153 @@ def interpret_predictions(predictions: np.ndarray) -> MDRPredictionOutput:
         resistance_percentage=resistance_percentage
     )
 
-
-
 def mock_prediction(input_data: MDRPredictionInput) -> np.ndarray:
     """Generate mock predictions for development"""
-    # Create realistic mock predictions based on known resistance patterns
-    base_resistance = np.random.choice(
-        [0, 1], size=len(ANTIBIOTIC_NAMES), p=[0.7, 0.3])
-
-    if input_data.phenotype == "MRSA":
+    pathogen_config = PATHOGEN_MODELS[input_data.pathogen]
+    num_antibiotics = len(pathogen_config["antibiotics"])
+    
+    # Generate mock probabilities instead of binary values
+    base_resistance_probs = np.random.uniform(0.1, 0.9, size=num_antibiotics)
+    
+    # Adjust based on phenotype and pathogen characteristics
+    if input_data.pathogen == "Staphylococcus aureus" and input_data.phenotype == "MRSA":
         # MRSA typically shows more resistance
-        base_resistance[11] = 1  # Oxacillin resistance
-        base_resistance[1] = 1   # Erythromycin resistance
-        base_resistance[2] = 1   # Levofloxacin resistance
-
+        base_resistance_probs += 0.2
+    elif input_data.pathogen == "Escherichia coli" and "ESBL" in input_data.phenotype:
+        # ESBL strains show beta-lactam resistance
+        base_resistance_probs[1:4] += 0.3  # Amoxicillin, Ampicillin, Cefepime
+    
     # Adjust based on ward (ICU typically has more resistance)
     if input_data.ward == "ICU":
-        # Increase resistance probability
-        for i in range(len(base_resistance)):
-            if np.random.random() < 0.4:  # 40% chance to add resistance
-                base_resistance[i] = 1
+        base_resistance_probs += 0.1
+    
+    # Ensure probabilities are within [0, 1]
+    base_resistance_probs = np.clip(base_resistance_probs, 0.0, 1.0)
+    
+    return base_resistance_probs
 
-    return base_resistance
+# Helper function to generate phenotype menu based on selected pathogen
+def generate_phenotype_menu(pathogen: str) -> Dict:
+    """Generate phenotype menu based on selected pathogen"""
+    if pathogen not in PATHOGEN_MODELS:
+        return {'text': 'Invalid pathogen selected', 'options': {}}
+    
+    phenotypes = list(PATHOGEN_MODELS[pathogen]["phenotype_mapping"].keys())
+    menu_text = f'Select Phenotype for {pathogen}:\n'
+    options = {}
+    
+    for i, phenotype in enumerate(phenotypes, 1):
+        menu_text += f'{i}. {phenotype}\n'
+        options[str(i)] = phenotype
+    
+    return {'text': menu_text.strip(), 'options': options}
+
+
+@app.get("/variables")
+def get_model_input_variables(pathogen_name: str):
+    pathogen_model_map = {
+        "Staphylococcus aureus": "models/staphylococcus_aureus_model.pkl",
+        "Escherichia coli": "models/escherichia_coli_model.pkl",
+        "Klebsiella pneumoniae": "models/klebsiella_pneumoniae_model.pkl",
+        "Acinetobacter baumannii": "models/acinetobacter_baumannii_model.pkl",
+        "Pseudomonas aeruginosa": "models/pseudomonas_aeruginosa_model.pkl",
+    }
+    if pathogen_name not in pathogen_model_map:
+        raise ValueError(f"No model found for pathogen '{pathogen_name}'")
+
+    model_path = pathogen_model_map[pathogen_name]
+
+    with open(model_path, "rb") as f:
+        model = pickle.load(f)
+
+    # Try to extract feature names
+    feature_names = []
+
+    if hasattr(model, "feature_names_in_"):
+        feature_names = list(model.feature_names_in_)
+    elif hasattr(model, "named_steps"):
+        for step in model.named_steps.values():
+            if hasattr(step, "feature_names_in_"):
+                feature_names = list(step.feature_names_in_)
+                break
+    elif hasattr(model, "get_booster"):  # For XGBoost
+        booster = model.get_booster()
+        feature_names = booster.feature_names
+    elif hasattr(model, "coef_"):
+        feature_names = [f"feature_{i}" for i in range(len(model.coef_))]
+    else:
+        raise RuntimeError("Could not extract feature names from model")
+
+    return feature_names
+
 
 
 @app.post("/predict", response_model=MDRPredictionOutput)
 async def predict_mdr(input_data: MDRPredictionInput):
-    """
-    Predict antibiotic resistance patterns for Staphylococcus aureus
-    """
+    """Predict antibiotic resistance for a given pathogen"""
     try:
-        # Encode input for model
-        encoded_input = encode_input(input_data)
+        # Validate pathogen
+        if input_data.pathogen not in PATHOGEN_MODELS:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported pathogen: {input_data.pathogen}. Supported: {list(PATHOGEN_MODELS.keys())}"
+            )
+        
+        # Validate phenotype for the selected pathogen
+        pathogen_config = PATHOGEN_MODELS[input_data.pathogen]
+        valid_phenotypes = list(pathogen_config["phenotype_mapping"].keys())
+        if input_data.phenotype not in valid_phenotypes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid phenotype '{input_data.phenotype}' for {input_data.pathogen}. Valid options: {valid_phenotypes}"
+            )
 
+        # Encode input
+        encoded_input = encode_input(input_data)
+        
+        # Get model for the specific pathogen
+        model = models.get(input_data.pathogen)
+        
         if model is None:
-            # Use mock prediction for development only
+            logger.warning(f"Using mock prediction for {input_data.pathogen}")
             predictions = mock_prediction(input_data)
         else:
-            # Use actual model
-            predictions = model.predict(encoded_input)[0]
-
-           
-        result = interpret_predictions(predictions)
-
+            # Make prediction using the actual model
+            predictions = model.predict(encoded_input)[0]  # Assuming it returns probabilities
+            print(predictions)
+        
+        # Interpret predictions
+        result = interpret_predictions(predictions, input_data.pathogen, input_data.phenotype)
+        
+        logger.info(f"Prediction completed for {input_data.pathogen}: {result.total_resistant_count}/{len(pathogen_config['antibiotics'])} resistant")
         return result
-
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        # print(f"Prediction error: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Prediction failed: {str(e)}")
+        logger.error(f"Error in prediction: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.get("/pathogens")
+async def get_supported_pathogens():
+    """Get list of supported pathogens and their phenotypes"""
+    result = {}
+    for pathogen, config in PATHOGEN_MODELS.items():
+        result[pathogen] = {
+            "phenotypes": list(config["phenotype_mapping"].keys()),
+            "antibiotics": config["antibiotics"],
+            "model_loaded": models.get(pathogen) is not None
+        }
+    return result
+
+@app.get("/countries")
+async def get_supported_countries():
+    """Get list of supported countries"""
+    return {"countries": list(COUNTRY_MAPPING.keys())}
+
+
+
+# USSD Endpoints 
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

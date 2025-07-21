@@ -28,90 +28,90 @@ import { AnimatedButton } from "@/components/AnimatedButton";
 import { FormSection } from "@/components/FormSection";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 
-const PATHOGENS = ["Staphylococcus aureus"];
-const PHENOTYPES = ["MSSA", "MRSA"];
-const COUNTRIES = [
-  "Europe",
-  "Asia",
-  "North America",
-  "South America",
-  "Middle East",
-  "Oceania",
-  "Africa",
+const countries = [
+  "Argentina", "Australia", "Austria", "Belgium", "Brazil",
+  "Bulgaria", "Cameroon", "Canada", "Chile", "China",
+  "Colombia", "Costa Rica", "Croatia", "Czech Republic", "Denmark",
+  "Dominican Republic", "Egypt", "El Salvador", "Estonia", "Finland",
+  "France", "Germany", "Ghana", "Greece", "Guatemala",
+  "Honduras", "Hong Kong", "Hungary", "India", "Indonesia",
+  "Ireland", "Israel", "Italy", "Ivory Coast", "Jamaica",
+  "Japan", "Jordan", "Kenya", "Korea, South", "Kuwait",
+  "Latvia", "Lebanon", "Lithuania", "Malawi", "Malaysia",
+  "Mauritius", "Mexico", "Morocco", "Namibia", "Netherlands",
+  "New Zealand", "Nicaragua", "Nigeria", "Norway", "Oman",
+  "Pakistan", "Panama", "Philippines", "Poland", "Portugal",
+  "Puerto Rico", "Qatar", "Romania", "Russia", "Saudi Arabia",
+  "Serbia", "Singapore", "Slovak Republic", "Slovenia", "South Africa",
+  "Spain", "Sweden", "Switzerland", "Taiwan", "Thailand",
+  "Tunisia", "Turkey", "Uganda", "Ukraine", "United Kingdom",
+  "United States", "Venezuela", "Vietnam"
 ];
+
+const organisms = [
+  "Staphylococcus aureus",
+  "Escherichia coli",
+  "Klebsiella pneumoniae",
+  "Acinetobacter baumannii",
+  "Pseudomonas aeruginosa"
+];
+
+const phenotypes = {
+  "Staphylococcus aureus": ["MSSA", "MRSA"],
+  "Escherichia coli": [
+    "SPM-Neg", "GIM-Neg", "ESBL", "NDM-Neg", "CTX-M-15",
+    "CTX-M-14", "CTX-M-27", "CMY-2", "TEM-OSBL", "CTX-M-32", "TEM-52"
+  ],
+  "Klebsiella pneumoniae": [
+    "GIM-Neg", "ESBL", "SPM-Neg", "NDM-Neg", "KPC", "Unknown"
+  ],
+  "Acinetobacter baumannii": [
+    "OXA-23", "OXA-24", "OXA-58", "SPM-Neg", "GIM-Neg",
+    "OXA-239", "OXA-72", "OXA-40", "OXA-366", "OXA-435",
+    "OXA-398", "OXA-TYPE", "OXA-437", "OXA-420",
+    "OXA-440", "OXA-397", "Unknown"
+  ],
+  "Pseudomonas aeruginosa": [
+    "GIM-Neg", "SPM-Neg", "Unknown"
+  ]
+};
+
+
 const SEXES = ["Male", "Female"];
-const AGE_GROUPS = [
-  "0-2 Years",
-  "3-12 Years",
-  "13-18 Years",
-  "19-64 Years",
-  "65-84 Years",
-  "85+ Years",
-  "Unknown",
+const ageGroups = [
+  "85 and Over",
+  "65 to 84 Years",
+  "19 to 64 Years",
+  "13 to 18 Years",
+  "3 to 12 Years",
+  "0 to 2 Years"
 ];
-const WARDS = [
-  "Medicine General",
-  "Surgery General",
+
+const wards = [
+  "Medical ward",
+  "Surgical ward",
   "ICU",
-  "Emergency Room",
-  "Pediatric General",
-  "Clinic / Office",
-  "Pediatric ICU",
-  "Nursing Home / Rehab",
-  "Unknown",
+  "Emergency",
+  "Pediatric ward",
+  "Clinic",
+  "NICU",
+  "Nursing home"
 ];
-const SPECIMEN_TYPES = [
-  "Wound",
-  "Blood",
-  "Sputum",
-  "Abscess",
-  "Endotracheal aspirate",
-  "Gastric Abscess",
-  "Skin: Other",
-  "Ulcer",
-  "Urine",
-  "Bronchus",
-  "Bronchoalveolar lavage",
-  "Skin",
-  "Trachea",
-  "Cellulitis",
-  "Peritoneal Fluid",
-  "Respiratory: Other",
-  "Decubitus",
-  "Burn",
-  "Nose",
-  "Furuncle",
-  "Catheters",
-  "Exudate",
-  "Impetiginous lesions",
-  "Tissue Fluid",
-  "Thoracentesis Fluid",
-  "Abdominal Fluid",
-  "Ear",
-  "Intestinal: Other",
-  "Eye",
-  "Bone",
-  "Synovial Fluid",
-  "Lungs",
-  "Throat",
-  "None Given",
-  "Bodily Fluids",
-  "Carbuncle",
-  "Aspirate",
-  "HEENT: Other",
-  "Pleural Fluid",
-  "Respiratory: Sinuses",
-  "Muscle",
-  "Bladder",
-  "Genitourinary: Other",
-  "Gall Bladder",
-  "Vagina",
-  "Stomach",
-  "Drains",
-  "Urethra",
-  "CSF",
+
+const specimenTypes = [
+  "Skin & Soft Tissue",
+  "Respiratory",
+  "Blood & Circulatory",
+  "Gastrointestinal",
+  "Urinary & Genital",
+  "Ascitic Fluid",
+  "ENT & CNS",
+  "Musculoskeletal & Bone",
+  "Other"
 ];
-const IN_OUT_PATIENT = ["Inpatient", "None Given", "Outpatient", "Other"];
+
+
+const IN_OUT_PATIENT = ["Inpatient", "Outpatient"];
 
 interface AntibioticResult {
   name: string;
@@ -130,8 +130,9 @@ interface PredictionResult {
 }
 
 export default function Home() {
+
   const [formData, setFormData] = useState({
-    pathogen: "",
+    pathogen: "" ,
     phenotype: "",
     country: "",
     sex: "",
@@ -147,36 +148,63 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
+  e.preventDefault();
+  setIsLoading(true);
+  setError(null);
+  setResult(null);
 
-    try {
-      const response = await fetch("/api/predict", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...formData,
-          year: parseInt(formData.year),
-        }),
-      });
+  // Validate required fields
+  const requiredFields: (keyof typeof formData)[] = [
+    "pathogen",
+    "phenotype",
+    "sex",
+    "country",
+    "pathogen",
+    "phenotype",
+    "year",
+    "in_out_patient"
+  ];
 
-      if (!response.ok) {
-        throw new Error("Failed to get prediction");
-      }
-
-      const data = await response.json();
-      console.log(data);
-      setResult(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
+  for (const field of requiredFields) {
+    if (!formData[field] || formData[field].toString().trim() === "") {
+      setError(`Missing or invalid value for: ${field}`);
       setIsLoading(false);
+      return;
     }
-  };
+  }
+
+  if (isNaN(Number(formData.year)) || Number(formData.year) < 1900 || Number(formData.year) > new Date().getFullYear()) {
+    setError("Please enter a valid year");
+    setIsLoading(false);
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/predict", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...formData,
+        year: parseInt(formData.year),
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to get prediction");
+    }
+
+    const data = await response.json();
+    console.log(data);
+    setResult(data);
+  } catch (err) {
+    setError(err instanceof Error ? err.message : "An error occurred");
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-cyan-50 to-blue-100 flex">
@@ -237,7 +265,7 @@ export default function Home() {
                         <SelectValue placeholder="Select age group" />
                       </SelectTrigger>
                       <SelectContent>
-                        {AGE_GROUPS.map((group) => (
+                        {ageGroups.map((group) => (
                           <SelectItem key={group} value={group}>
                             {group}
                           </SelectItem>
@@ -277,26 +305,25 @@ export default function Home() {
                       htmlFor="country"
                       className="text-blue-700 font-medium"
                     >
-                      Continent
+                      Country
                     </Label>
-                     <Select
+                    <Select
                       value={formData.country}
                       onValueChange={(value) =>
                         setFormData((prev) => ({ ...prev, country: value }))
                       }
                     >
                       <SelectTrigger className="border-blue-200 focus:border-blue-400">
-                        <SelectValue placeholder="Select continent" />
+                        <SelectValue placeholder="Select Country" />
                       </SelectTrigger>
                       <SelectContent>
-                        {COUNTRIES.map((country) => (
+                        {countries.map((country) => (
                           <SelectItem key={country} value={country}>
                             {country}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    
                   </motion.div>
 
                   <motion.div
@@ -343,7 +370,7 @@ export default function Home() {
                         <SelectValue placeholder="Select ward" />
                       </SelectTrigger>
                       <SelectContent>
-                        {WARDS.map((ward) => (
+                        {wards.map((ward) => (
                           <SelectItem key={ward} value={ward}>
                             {ward}
                           </SelectItem>
@@ -375,7 +402,7 @@ export default function Home() {
                         <SelectValue placeholder="Select specimen type" />
                       </SelectTrigger>
                       <SelectContent>
-                        {SPECIMEN_TYPES.map((type) => (
+                        {specimenTypes.map((type) => (
                           <SelectItem key={type} value={type}>
                             {type}
                           </SelectItem>
@@ -441,7 +468,7 @@ export default function Home() {
                         <SelectValue placeholder="Select pathogen" />
                       </SelectTrigger>
                       <SelectContent>
-                        {PATHOGENS.map((pathogen) => (
+                        {organisms.map((pathogen) => (
                           <SelectItem key={pathogen} value={pathogen}>
                             {pathogen}
                           </SelectItem>
@@ -450,34 +477,39 @@ export default function Home() {
                     </Select>
                   </motion.div>
 
-                  <motion.div
-                    whileHover={{ scale: 1.02 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <Label
-                      htmlFor="phenotype"
-                      className="text-blue-700 font-medium"
+                  {formData.pathogen && (
+                    <motion.div
+                      whileHover={{ scale: 1.02 }}
+                      transition={{ duration: 0.2 }}
                     >
-                      Phenotype
-                    </Label>
-                    <Select
-                      value={formData.phenotype}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({ ...prev, phenotype: value }))
-                      }
-                    >
-                      <SelectTrigger className="border-blue-200 focus:border-blue-400">
-                        <SelectValue placeholder="Select phenotype" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PHENOTYPES.map((phenotype) => (
-                          <SelectItem key={phenotype} value={phenotype}>
-                            {phenotype}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </motion.div>
+                      <Label
+                        htmlFor="phenotype"
+                        className="text-blue-700 font-medium"
+                      >
+                        Phenotype
+                      </Label>
+                      <Select
+                        value={formData.phenotype}
+                        onValueChange={(value) =>
+                          setFormData((prev) => ({ ...prev, phenotype: value }))
+                        }
+                      >
+                        <SelectTrigger className="border-blue-200 focus:border-blue-400">
+                          <SelectValue placeholder="Select phenotype" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          
+                          {(formData && phenotypes[formData.pathogen as keyof typeof phenotypes] || []).map(
+                            (phenotype: string) => (
+                              <SelectItem key={phenotype} value={phenotype}>
+                                {phenotype}
+                              </SelectItem>
+                            )
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </motion.div>
+                  )}
                 </div>
               </FormSection>
 
@@ -530,10 +562,9 @@ export default function Home() {
           </AnimatePresence>
 
           {/* Results */}
-          { result &&  (<AnimatedCard delay={0}>
-            <div className="space-y-6">
-             
-              
+          {result && (
+            <AnimatedCard delay={0}>
+              <div className="space-y-6">
                 <>
                   {/* Main Result */}
                   <motion.div
@@ -747,10 +778,9 @@ export default function Home() {
                     </motion.div>
                   </div>
                 </>
-              
               </div>
-          </AnimatedCard>)
-            }
+            </AnimatedCard>
+          )}
         </motion.div>
       </div>
     </div>
