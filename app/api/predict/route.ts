@@ -3,7 +3,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     
     // Forward the request to the Python API
-    const response = await fetch('http://0.0.0.0:8000/predict', {
+    const response = await fetch('https://stratify-api-production.up.railway.app/predict', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
