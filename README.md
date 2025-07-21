@@ -85,7 +85,7 @@ To train your own model:
 
 1. Prepare your dataset with the required features
 2. Train your model using scikit-learn or your preferred ML library
-3. Save the trained model as `models/mdr_model.pkl`
+3. Save the trained models in the `models` folder
 4. Update the preprocessing function in `services/api/main.py`
 
 ## Docker Services
