@@ -507,6 +507,332 @@ async def get_supported_countries():
 
 
 # USSD Endpoints 
+# Add this to your existing FastAPI application
+
+@app.post("/ussd", response_class=PlainTextResponse)
+async def ussd_handler(
+    sessionId: str = Form(...),
+    serviceCode: str = Form(...),
+    phoneNumber: str = Form(...),
+    text: str = Form("")
+):
+    """USSD endpoint for MDR Stratify predictions"""
+    try:
+        logger.info(f"USSD request - Session: {sessionId}, Text: '{text}', Phone: {phoneNumber}")
+        
+        session = session_manager.get_session(sessionId)
+        
+        # Handle empty text (initial request)
+        if text == "":
+            response = "CON " + MAIN_MENU['text']
+            session['step'] = 'main_menu'
+            session_manager.update_session(sessionId, session)
+            return response
+        
+        # Parse user input
+        user_inputs = text.split('*')
+        current_input = user_inputs[-1] if user_inputs else ""
+        
+        # Route based on current step
+        if session['step'] == 'main_menu':
+            return handle_main_menu(sessionId, current_input, session)
+        elif session['step'] == 'pathogen_selection':
+            return handle_pathogen_selection(sessionId, current_input, session)
+        elif session['step'] == 'phenotype_selection':
+            return handle_phenotype_selection(sessionId, current_input, session)
+        elif session['step'] == 'country_selection':
+            return handle_country_selection(sessionId, current_input, session)
+        elif session['step'] == 'country_more':
+            return handle_country_more(sessionId, current_input, session, user_inputs)
+        elif session['step'] == 'ward_selection':
+            return handle_ward_selection(sessionId, current_input, session)
+        elif session['step'] == 'specimen_selection':
+            return handle_specimen_selection(sessionId, current_input, session)
+        elif session['step'] == 'age_selection':
+            return handle_age_selection(sessionId, current_input, session)
+        elif session['step'] == 'sex_selection':
+            return handle_sex_selection(sessionId, current_input, session)
+        elif session['step'] == 'patient_type_selection':
+            return handle_patient_type_selection(sessionId, current_input, session)
+        elif session['step'] == 'year_input':
+            return handle_year_input(sessionId, current_input, session)
+        elif session['step'] == 'help':
+            return handle_help_menu(sessionId, current_input, session)
+        elif session['step'] == 'about':
+            return handle_about_menu(sessionId, current_input, session)
+        else:
+            # Invalid session state
+            session_manager.clear_session(sessionId)
+            return "END Invalid session. Please try again."
+    
+    except Exception as e:
+        logger.error(f"USSD error for session {sessionId}: {e}")
+        session_manager.clear_session(sessionId)
+        return "END System error. Please try again later."
+
+def handle_main_menu(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle main menu selection"""
+    if user_input == '1':
+        session['step'] = 'pathogen_selection'
+        session_manager.update_session(session_id, session)
+        return "CON " + PATHOGEN_MENU['text']
+    elif user_input == '2':
+        session['step'] = 'help'
+        session_manager.update_session(session_id, session)
+        return handle_help_menu(session_id, "", session)
+    elif user_input == '3':
+        session['step'] = 'about'
+        session_manager.update_session(session_id, session)
+        return handle_about_menu(session_id, "", session)
+    else:
+        return "END Invalid selection. Please try again."
+
+def handle_pathogen_selection(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle pathogen selection"""
+    if user_input in PATHOGEN_MENU['options']:
+        pathogen = PATHOGEN_MENU['options'][user_input]
+        session['data']['pathogen'] = pathogen
+        session['step'] = 'phenotype_selection'
+        session_manager.update_session(session_id, session)
+        
+        phenotype_menu = generate_phenotype_menu(pathogen)
+        return "CON " + phenotype_menu['text']
+    else:
+        return "END Invalid pathogen selection."
+
+def handle_phenotype_selection(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle phenotype selection"""
+    pathogen = session['data']['pathogen']
+    phenotype_menu = generate_phenotype_menu(pathogen)
+    
+    if user_input in phenotype_menu['options']:
+        phenotype = phenotype_menu['options'][user_input]
+        session['data']['phenotype'] = phenotype
+        session['step'] = 'country_selection'
+        session_manager.update_session(session_id, session)
+        return "CON " + COUNTRY_MENU['text']
+    else:
+        return "END Invalid phenotype selection."
+
+def handle_country_selection(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle country selection (first 20 countries)"""
+    if user_input == '20':
+        # Show more countries
+        session['step'] = 'country_more'
+        session_manager.update_session(session_id, session)
+        
+        countries = list(COUNTRY_MAPPING.keys())
+        more_countries_text = "Select Country (21-40):\n"
+        for i in range(20, min(40, len(countries))):
+            more_countries_text += f"{i+1}. {countries[i]}\n"
+        if len(countries) > 40:
+            more_countries_text += "41. More..."
+        
+        return "CON " + more_countries_text.strip()
+    
+    elif user_input in COUNTRY_MENU['options']:
+        country = COUNTRY_MENU['options'][user_input]
+        session['data']['country'] = country
+        session['step'] = 'ward_selection'
+        session_manager.update_session(session_id, session)
+        return "CON " + WARD_MENU['text']
+    else:
+        return "END Invalid country selection."
+
+def handle_country_more(session_id: str, user_input: str, session: Dict, user_inputs: list) -> str:
+    """Handle extended country selection"""
+    countries = list(COUNTRY_MAPPING.keys())
+    
+    try:
+        country_index = int(user_input) - 1
+        if 20 <= country_index < len(countries):
+            country = countries[country_index]
+            session['data']['country'] = country
+            session['step'] = 'ward_selection'
+            session_manager.update_session(session_id, session)
+            return "CON " + WARD_MENU['text']
+        elif user_input == '41' and len(countries) > 40:
+            # Show even more countries if needed
+            more_countries_text = "Select Country (41-60):\n"
+            for i in range(40, min(60, len(countries))):
+                more_countries_text += f"{i+1}. {countries[i]}\n"
+            return "CON " + more_countries_text.strip()
+        else:
+            return "END Invalid country selection."
+    except ValueError:
+        return "END Invalid input. Please enter a number."
+
+def handle_ward_selection(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle ward selection"""
+    if user_input in WARD_MENU['options']:
+        ward = WARD_MENU['options'][user_input]
+        session['data']['ward'] = ward
+        session['step'] = 'specimen_selection'
+        session_manager.update_session(session_id, session)
+        return "CON " + SPECIMEN_MENU['text']
+    else:
+        return "END Invalid ward selection."
+
+def handle_specimen_selection(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle specimen type selection"""
+    if user_input in SPECIMEN_MENU['options']:
+        specimen = SPECIMEN_MENU['options'][user_input]
+        session['data']['specimen_type'] = specimen
+        session['step'] = 'age_selection'
+        session_manager.update_session(session_id, session)
+        return "CON " + AGE_GROUP_MENU['text']
+    else:
+        return "END Invalid specimen type selection."
+
+def handle_age_selection(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle age group selection"""
+    if user_input in AGE_GROUP_MENU['options']:
+        age_group = AGE_GROUP_MENU['options'][user_input]
+        session['data']['age_group'] = age_group
+        session['step'] = 'sex_selection'
+        session_manager.update_session(session_id, session)
+        return "CON " + SEX_MENU['text']
+    else:
+        return "END Invalid age group selection."
+
+def handle_sex_selection(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle sex selection"""
+    if user_input in SEX_MENU['options']:
+        sex = SEX_MENU['options'][user_input]
+        session['data']['sex'] = sex
+        session['step'] = 'patient_type_selection'
+        session_manager.update_session(session_id, session)
+        return "CON " + PATIENT_TYPE_MENU['text']
+    else:
+        return "END Invalid gender selection."
+
+def handle_patient_type_selection(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle patient type selection"""
+    if user_input in PATIENT_TYPE_MENU['options']:
+        patient_type = PATIENT_TYPE_MENU['options'][user_input]
+        session['data']['in_out_patient'] = patient_type
+        session['step'] = 'year_input'
+        session_manager.update_session(session_id, session)
+        return "CON Enter collection year (e.g., 2024):"
+    else:
+        return "END Invalid patient type selection."
+
+def handle_year_input(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle year input and process prediction"""
+    try:
+        year = int(user_input)
+        if 2000 <= year <= 2030:  # Reasonable year range
+            session['data']['year'] = year
+            session_manager.update_session(session_id, session)
+            
+            # Now we have all required data, make the prediction
+            return process_prediction(session_id, session)
+        else:
+            return "END Invalid year. Please enter a year between 2000-2030."
+    except ValueError:
+        return "END Invalid year format. Please enter a valid year."
+
+def process_prediction(session_id: str, session: Dict) -> str:
+    """Process the MDR prediction with collected data"""
+    try:
+        data = session['data']
+        
+        # Create prediction input
+        prediction_input = MDRPredictionInput(
+            pathogen=data['pathogen'],
+            phenotype=data['phenotype'],
+            country=data['country'],
+            sex=data['sex'],
+            age_group=data['age_group'],
+            ward=data['ward'],
+            specimen_type=data['specimen_type'],
+            in_out_patient=data['in_out_patient'],
+            year=data['year']
+        )
+        
+        # Encode input
+        encoded_input = encode_input(prediction_input)
+        
+        # Get model for the specific pathogen
+        model = models.get(prediction_input.pathogen)
+        
+        if model is None:
+            logger.warning(f"Using mock prediction for {prediction_input.pathogen}")
+            predictions = mock_prediction(prediction_input)
+        else:
+            predictions = model.predict(encoded_input)[0]
+        
+        # Interpret predictions
+        result = interpret_predictions(predictions, prediction_input.pathogen, prediction_input.phenotype)
+        
+        # Format result for USSD
+        response = f"END MDR Analysis Results\n"
+        response += f"Pathogen: {result.pathogen}\n"
+        response += f"Risk Level: {result.risk_level}\n"
+        response += f"MDR Risk: {'HIGH' if result.overall_mdr_risk else 'LOW'}\n"
+        response += f"Resistance Rate: {result.resistance_percentage:.1f}%\n"
+        response += f"Resistant to {result.total_resistant_count} antibiotics\n\n"
+        
+        if result.resistant_antibiotics:
+            response += "Resistant Antibiotics:\n"
+            for ab in result.resistant_antibiotics[:3]:  # Show only first 3 due to SMS limits
+                response += f"- {ab.name}\n"
+            if len(result.resistant_antibiotics) > 3:
+                response += f"...and {len(result.resistant_antibiotics)-3} more"
+        
+        # Clear session after successful prediction
+        session_manager.clear_session(session_id)
+        
+        logger.info(f"Prediction completed via USSD for session {session_id}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error processing prediction for session {session_id}: {e}")
+        session_manager.clear_session(session_id)
+        return "END Error processing prediction. Please try again."
+
+def handle_help_menu(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle help menu"""
+    help_text = """END MDR Stratify Help
+
+This service predicts antibiotic resistance for bacterial infections.
+
+Steps:
+1. Select pathogen (bacteria type)
+2. Choose phenotype (strain)
+3. Select country
+4. Choose hospital ward
+5. Select specimen type
+6. Enter patient details
+7. Get resistance prediction
+
+For support, contact your healthcare provider.
+
+Restart anytime with the USSD code."""
+    
+    session_manager.clear_session(session_id)
+    return help_text
+
+def handle_about_menu(session_id: str, user_input: str, session: Dict) -> str:
+    """Handle about menu"""
+    about_text = """END About MDR Stratify
+
+Version: 2.0.0
+Developed for healthcare providers
+
+Predicts antibiotic resistance for:
+- Staphylococcus aureus
+- Escherichia coli
+- Klebsiella pneumoniae
+- Acinetobacter baumannii
+- Pseudomonas aeruginosa
+
+This tool assists clinical decisions but should not replace professional medical judgment.
+
+Use responsibly."""
+    
+    session_manager.clear_session(session_id)
+    return about_text
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
