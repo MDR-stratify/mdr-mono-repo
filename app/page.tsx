@@ -173,7 +173,7 @@ export default function Home() {
     }
   }
 
-  if (isNaN(Number(formData.year)) || Number(formData.year) < 1900 || Number(formData.year) > new Date().getFullYear()) {
+  if (isNaN(Number(formData.year)) || Number(formData.year) < 1900 || Number(formData.year) > 2040 ) {
     setError("Please enter a valid year");
     setIsLoading(false);
     return;
@@ -196,7 +196,6 @@ export default function Home() {
     }
 
     const data = await response.json();
-    console.log(data);
     setResult(data);
   } catch (err) {
     setError(err instanceof Error ? err.message : "An error occurred");
@@ -331,7 +330,7 @@ export default function Home() {
                     transition={{ duration: 0.2 }}
                   >
                     <Label htmlFor="year" className="text-blue-700 font-medium">
-                      Year
+                      Year of sample collection
                     </Label>
                     <Input
                       id="year"
