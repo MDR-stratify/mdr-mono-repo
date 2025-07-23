@@ -27,7 +27,7 @@ MDR Stratify is a comprehensive web application that predicts the likelihood of 
 
 ###  USSD Preview
 
-[![▶️ Watch USSD in Action](https://your-thumbnail-url.com/thumb.png)](https://github.com/user-attachments/assets/a095fc19-f087-4024-81a0-d2ca1120d769)
+[![▶️ Watch USSD in Action]](https://github.com/user-attachments/assets/a095fc19-f087-4024-81a0-d2ca1120d769)
 
 
 ### GUI preview
