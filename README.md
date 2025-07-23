@@ -4,7 +4,7 @@ AI-driven MDR (Multi-Drug Resistance) Prediction for Optimized Antibiotic Use in
 
 ## Overview
 
-MDR Stratify is a comprehensive web application that predicts the likelihood of Multi-Drug Resistance in pathogens based on patient demographics, clinical settings, and pathogen characteristics. The system uses machine learning to help healthcare providers make informed decisions about antibiotic treatment.
+MDR Stratify is a comprehensive web application that predicts the likelihood of Multi-Drug Resistance in pathogens based on patient demographics, clinical settings, and pathogen characteristics. The system uses machine learning to help healthcare providers make informed decisions about antibiotic treatment in both a web interface and USSD.
 
 ## Features
 
@@ -12,7 +12,8 @@ MDR Stratify is a comprehensive web application that predicts the likelihood of 
 - **Real-time Prediction**: Instant MDR risk assessment
 - **Visual Results**: Clear, actionable prediction results with confidence levels
 - **Responsive Design**: Works on desktop and mobile devices
-- **API Integration**: Modular backend for easy integration with existing systems
+- **USSD API Integration**: backend USSD endpoint for easy integration with existing platforms like Africa talking
+  
 
 ## Technology Stack
 
@@ -20,8 +21,25 @@ MDR Stratify is a comprehensive web application that predicts the likelihood of 
 - **Backend**: FastAPI (Python), scikit-learn, pandas
 - **Infrastructure**: Docker, Docker Compose, Nginx
 - **Build Tools**: Makefile for automation
+- **Deployment platform**: railway.com
 
-## Quick Start
+## Platform Preview
+
+###  USSD Preview
+
+[![▶️ Watch USSD in Action](https://your-thumbnail-url.com/thumb.png)](https://github.com/user-attachments/assets/a095fc19-f087-4024-81a0-d2ca1120d769)
+
+
+### GUI preview
+
+Patient Information form
+<img width="1470" height="836" alt="Screenshot 2025-07-23 at 10 53 41" src="https://github.com/user-attachments/assets/2fdf8bea-973d-4d2e-a87b-ecf272d4a997" />
+
+Results
+<img width="1456" height="834" alt="Screenshot 2025-07-23 at 10 56 45" src="https://github.com/user-attachments/assets/70bd6583-ed54-4eeb-94c5-2a8450eac41e" />
+<img width="1454" height="831" alt="Screenshot 2025-07-23 at 10 55 24" src="https://github.com/user-attachments/assets/621f8bda-409f-4082-8247-27f99af70cc3" />
+
+## Quick Repo Run
 
 ### Prerequisites
 
