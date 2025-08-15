@@ -10,6 +10,7 @@ import uvicorn
 import os
 from datetime import datetime
 import logging
+import psutil
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -150,25 +151,83 @@ PATHOGEN_MODELS = {
 
 # USSD Session Management
 class USSDSession:
-    """Manages USSD session state"""
-    def __init__(self):
+    """Manages USSD session state with memory management"""
+    def __init__(self, max_sessions: int = 1000, session_timeout_hours: int = 1):
         self.sessions = {}
+        self.max_sessions = max_sessions
+        self.session_timeout_hours = session_timeout_hours
     
     def get_session(self, session_id: str) -> Dict[str, Any]:
-        return self.sessions.get(session_id, {
+        # Clean up old sessions periodically
+        if len(self.sessions) % 50 == 0:  # Every 50 requests
+            self._cleanup_old_sessions()
+        
+        session = self.sessions.get(session_id, {
             'step': 'start',
             'data': {},
-            'menu_stack': []
+            'menu_stack': [],
+            'created_at': datetime.now()
         })
+        
+        # Add timestamp if missing
+        if 'created_at' not in session:
+            session['created_at'] = datetime.now()
+        
+        return session
     
     def update_session(self, session_id: str, data: Dict[str, Any]):
+        # Add timestamp
+        data['updated_at'] = datetime.now()
+        if 'created_at' not in data:
+            data['created_at'] = datetime.now()
+        
         self.sessions[session_id] = data
         logger.info(f"Session {session_id} updated: step={data.get('step')}")
+        
+        # Enforce max sessions limit
+        if len(self.sessions) > self.max_sessions:
+            self._cleanup_oldest_sessions()
     
     def clear_session(self, session_id: str):
         if session_id in self.sessions:
             del self.sessions[session_id]
             logger.info(f"Session {session_id} cleared")
+    
+    def _cleanup_old_sessions(self):
+        """Remove sessions older than timeout"""
+        current_time = datetime.now()
+        expired_sessions = []
+        
+        for session_id, session_data in self.sessions.items():
+            created_at = session_data.get('created_at', current_time)
+            age_hours = (current_time - created_at).total_seconds() / 3600
+            
+            if age_hours > self.session_timeout_hours:
+                expired_sessions.append(session_id)
+        
+        for session_id in expired_sessions:
+            del self.sessions[session_id]
+        
+        if expired_sessions:
+            logger.info(f"Cleaned up {len(expired_sessions)} expired sessions")
+    
+    def _cleanup_oldest_sessions(self):
+        """Remove oldest sessions when max limit exceeded"""
+        if len(self.sessions) <= self.max_sessions:
+            return
+        
+        # Sort by creation time and remove oldest
+        sessions_by_age = sorted(
+            self.sessions.items(),
+            key=lambda x: x[1].get('created_at', datetime.now())
+        )
+        
+        sessions_to_remove = len(self.sessions) - self.max_sessions + 100  # Remove extra 100
+        for i in range(min(sessions_to_remove, len(sessions_by_age))):
+            session_id = sessions_by_age[i][0]
+            del self.sessions[session_id]
+        
+        logger.info(f"Cleaned up {sessions_to_remove} oldest sessions")
 
 # Updated USSD Menu Definitions
 MAIN_MENU = {
@@ -261,26 +320,33 @@ class MDRPredictionOutput(BaseModel):
     total_resistant_count: int
     resistance_percentage: float
 
-# Load models
-def load_models():
-    """Load all pathogen-specific models"""
-    models = {}
-    for pathogen, config in PATHOGEN_MODELS.items():
+# Lazy model loading - models loaded on demand
+_loaded_models = {}
+
+def get_model(pathogen: str):
+    """Load model on demand to save memory"""
+    if pathogen not in _loaded_models:
+        if pathogen not in PATHOGEN_MODELS:
+            logger.error(f"Unknown pathogen: {pathogen}")
+            return None
+        
+        config = PATHOGEN_MODELS[pathogen]
+        model_path = config["model_path"]
+        
         try:
-            model_path = config["model_path"]
             if os.path.exists(model_path):
+                logger.info(f"Loading model for {pathogen} on demand...")
                 with open(model_path, 'rb') as f:
-                    models[pathogen] = pickle.load(f)
-                    logger.info(f"Loaded model for {pathogen}")
+                    _loaded_models[pathogen] = pickle.load(f)
+                    logger.info(f"Model loaded for {pathogen}")
             else:
                 logger.warning(f"Model file not found for {pathogen}: {model_path}")
-                models[pathogen] = None
+                _loaded_models[pathogen] = None
         except Exception as e:
             logger.error(f"Error loading model for {pathogen}: {e}")
-            models[pathogen] = None
-    return models
-
-models = load_models()
+            _loaded_models[pathogen] = None
+    
+    return _loaded_models[pathogen]
 
 def encode_input(input_data: MDRPredictionInput) -> np.ndarray:
     """Convert text input to numeric encoding expected by the model"""
@@ -465,7 +531,7 @@ async def predict_mdr(input_data: MDRPredictionInput):
         encoded_input = encode_input(input_data)
         
         # Get model for the specific pathogen
-        model = models.get(input_data.pathogen)
+        model = get_model(input_data.pathogen)
         
         if model is None:
             logger.warning(f"Using mock prediction for {input_data.pathogen}")
@@ -495,7 +561,7 @@ async def get_supported_pathogens():
         result[pathogen] = {
             "phenotypes": list(config["phenotype_mapping"].keys()),
             "antibiotics": config["antibiotics"],
-            "model_loaded": models.get(pathogen) is not None
+            "model_loaded": pathogen in _loaded_models and _loaded_models[pathogen] is not None
         }
     return result
 
@@ -503,6 +569,30 @@ async def get_supported_pathogens():
 async def get_supported_countries():
     """Get list of supported countries"""
     return {"countries": list(COUNTRY_MAPPING.keys())}
+
+@app.get("/memory")
+async def get_memory_status():
+    """Get current memory usage and loaded models status"""
+    process = psutil.Process()
+    memory_info = process.memory_info()
+    
+    return {
+        "memory_usage": {
+            "rss_mb": round(memory_info.rss / 1024 / 1024, 2),  # Resident memory
+            "vms_mb": round(memory_info.vms / 1024 / 1024, 2),  # Virtual memory
+            "percent": round(process.memory_percent(), 2)
+        },
+        "loaded_models": {
+            "count": len(_loaded_models),
+            "models": list(_loaded_models.keys()),
+            "model_status": {pathogen: model is not None for pathogen, model in _loaded_models.items()}
+        },
+        "session_info": {
+            "active_sessions": len(session_manager.sessions),
+            "max_sessions": session_manager.max_sessions,
+            "timeout_hours": session_manager.session_timeout_hours
+        }
+    }
 
 
 
@@ -754,7 +844,7 @@ def process_prediction(session_id: str, session: Dict) -> str:
         encoded_input = encode_input(prediction_input)
         
         # Get model for the specific pathogen
-        model = models.get(prediction_input.pathogen)
+        model = get_model(prediction_input.pathogen)
         
         if model is None:
             logger.warning(f"Using mock prediction for {prediction_input.pathogen}")
